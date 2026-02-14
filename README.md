@@ -17,7 +17,7 @@ It scaffolds the four agent-ready principles:
 - Git hooks via `simple-git-hooks`
 - CI workflow that runs the full quality gate
 - Structure checks for catch-all filenames and oversized files
-- A reusable checklist in `references/checklist.md`
+- A reusable checklist in `docs/checklist.md`
 
 ## Quick Start
 
@@ -36,6 +36,7 @@ bun run check
 - `bun run test` - run tests with coverage
 - `bun run test:watch` - run tests in watch mode
 - `bun run structure:check` - enforce file naming and size rules
+- `bun run opencode:append-thread` - append latest Opencode session transcript to a PR comment
 - `bun run check` - run structure, format, lint, typecheck, and tests
 
 ## Suggested Next Steps

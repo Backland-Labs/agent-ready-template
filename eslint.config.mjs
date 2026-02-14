@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default tseslint.config(
   {
-    ignores: ["coverage/**", "dist/**"]
+    ignores: ["coverage/**", "dist/**", "scripts/append-opencode-thread.ts"]
   },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
