@@ -19,7 +19,7 @@ Use these unless the task that invoked you says otherwise:
 - Runtime and package manager: **Bun**. If `bun` is not on PATH and you cannot install it, fall back to `npm` and adjust commands accordingly.
 - Stack: **Vite + React + TypeScript**.
 - Tooling: **Biome** (linting and formatting), **Vitest**, strict TypeScript, **Husky** pre-commit hooks.
-- Hosting: GitHub with GitHub Actions CI.
+- Hosting: GitHub.
 
 Before starting, confirm prerequisites and record the versions in your working notes:
 
@@ -256,7 +256,7 @@ bunx vitest run
 
 ## 6. Wire up package scripts
 
-Edit `package.json` so these scripts exist exactly. From this point on, run all checks through these scripts — never ad-hoc variants — so local runs, the pre-commit hook, CI, and future agents all execute the same gate:
+Edit `package.json` so these scripts exist exactly. From this point on, run all checks through these scripts — never ad-hoc variants — so local runs, the pre-commit hook, and future agents all execute the same gate:
 
 ```json
 {
@@ -359,32 +359,7 @@ questions yourself, and only ask about outcomes they can judge.
 
 Also write a short `README.md`: what the app is, `bun install`, `bun run dev`. Keep both files accurate to what actually exists in the repo — do not document aspirations.
 
-## 10. Add CI
-
-Write `.github/workflows/ci.yml`:
-
-```yaml
-name: CI
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun run check
-      - run: bun run build
-```
-
-CI must run the same `check` script as the pre-commit hook and local development. Do not add CI-only check commands.
-
-## 11. Commit and push
+## 10. Commit and push
 
 ```sh
 git add -A
@@ -394,7 +369,7 @@ git status
 Inspect the status output before committing. Abort and fix if you see `node_modules/`, `dist/`, any `.env` file, or anything resembling a credential. Then:
 
 ```sh
-git commit -m "Scaffold TypeScript web app with Vite, Biome, Vitest, Husky, and CI"
+git commit -m "Scaffold TypeScript web app with Vite, Biome, Vitest, and Husky"
 ```
 
 The pre-commit hook must run and pass during this commit — confirm its output appears. Only create and push a remote if the task asked for one:
@@ -414,7 +389,6 @@ Report the repo as ready only when every item below is true. State each result e
 - [ ] `.gitignore` excludes `node_modules/`, `dist/`, and `.env`
 - [ ] ESLint and Prettier are fully removed; Biome is the only lint/format tool
 - [ ] `AGENTS.md` and `README.md` exist and describe the repo as it actually is
-- [ ] CI runs the same `check` script used locally
 - [ ] The initial commit contains no secrets and no generated artifacts
 
 If any item fails and you cannot fix it, report exactly which step failed and the full error output — do not report partial success as success.
