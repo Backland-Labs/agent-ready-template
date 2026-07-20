@@ -1,18 +1,30 @@
-# Repo Creation Guide
+# Repo Creation Instructions
 
-This document walks an agent through setting up a TypeScript repository for a basic web app, from empty directory to a verified working baseline. Follow the steps in order. Each step ends with a verification command — do not move on until it passes.
+You are an agent setting up a new TypeScript repository for a basic web app. Execute the steps below in order, starting from an empty directory. Every step ends with a verification command. If verification fails, fix the problem before proceeding — never continue past a failing check. Do not ask the user for input unless a step explicitly says to.
 
-## Assumptions and defaults
+## The user is nontechnical
 
-- Runtime and package manager: **Bun** (fast installs, built-in TypeScript execution). If Bun is unavailable, substitute `npm` and `tsx`; the structure is the same.
-- Stack: **Vite + React + TypeScript** for the frontend. This is a sensible default for a basic web app; swap in another framework only if the task demands it.
-- Tooling: **ESLint** (flat config), **Prettier**, **Vitest**, strict TypeScript.
-- Git hosting: GitHub, with CI via GitHub Actions.
+The person you are working for does not read code and is not familiar with developer tooling. This changes how you communicate, not what you build:
 
-Check prerequisites before starting:
+- Report progress in plain language: "I set up automatic code checks that run before every save to the project's history," not "I configured a Husky pre-commit hook running the Biome gate."
+- When something fails, say what it means for them and what you are doing about it. Never paste raw error output as your explanation — summarize it, keep the raw output available if they ask.
+- Never ask them to choose between technical options (library A vs. B, config flags). Make the choice yourself using the defaults below and mention what you picked in one sentence.
+- If you genuinely need input, ask about outcomes they can judge ("Should visitors need to log in?"), never implementation.
+- Do not ask them to run commands. Everything in this document is yours to execute.
+
+## Defaults
+
+Use these unless the task that invoked you says otherwise:
+
+- Runtime and package manager: **Bun**. If `bun` is not on PATH and you cannot install it, fall back to `npm` and adjust commands accordingly.
+- Stack: **Vite + React + TypeScript**.
+- Tooling: **Biome** (linting and formatting), **Vitest**, strict TypeScript, **Husky** pre-commit hooks.
+- Hosting: GitHub with GitHub Actions CI.
+
+Before starting, confirm prerequisites and record the versions in your working notes:
 
 ```sh
-bun --version   # need >= 1.0
+bun --version   # require >= 1.0
 git --version
 ```
 
@@ -22,7 +34,7 @@ git --version
 git init
 ```
 
-Create `.gitignore`:
+Write `.gitignore` with exactly this content, before anything else exists to accidentally commit:
 
 ```gitignore
 node_modules/
@@ -33,7 +45,10 @@ coverage/
 .DS_Store
 ```
 
-Never commit `.env` files or secrets. If the app needs configuration, create a committed `.env.example` with placeholder values instead.
+Rules you must follow for the rest of this setup:
+
+- Never write real secrets to any file. If the app needs configuration, create a committed `.env.example` with placeholder values.
+- Never commit `node_modules/` or build output.
 
 ## 2. Scaffold the app
 
@@ -42,17 +57,31 @@ bun create vite@latest . --template react-ts
 bun install
 ```
 
-If the directory is not empty, scaffold into a temp directory and move the files in. Verify:
+If the target directory is not empty, scaffold into a temporary directory inside your scratchpad, then move the generated files into the target. Do not delete existing files to make room — stop and report the conflict instead.
+
+The Vite template ships ESLint; this repo uses Biome instead. Remove the template's linter so there is exactly one tool with one config:
 
 ```sh
-bun run dev
+bun remove eslint typescript-eslint eslint-plugin-react-hooks eslint-plugin-react-refresh @eslint/js globals 2>/dev/null
+rm -f eslint.config.js
 ```
 
-The dev server should start on `http://localhost:5173`. Stop it with Ctrl+C once confirmed. (If running unattended, use `curl -sf http://localhost:5173 >/dev/null` against a backgrounded server instead of checking visually.)
+(Some of those packages may not be present depending on template version; removing what exists is sufficient.)
+
+Verify the dev server non-interactively:
+
+```sh
+bun run dev &
+sleep 3
+curl -sf http://localhost:5173 >/dev/null && echo OK
+kill %1
+```
+
+Require `OK`. Do not verify by describing what a browser "should" show — you must see the successful curl.
 
 ## 3. Tighten the TypeScript config
 
-Vite's template ships a reasonable `tsconfig.json`, but confirm these compiler options are set in `tsconfig.app.json` (or `tsconfig.json` if there is no project-references split):
+Open `tsconfig.app.json` (or `tsconfig.json` if the template has no project-references split) and ensure these compiler options are present, adding any that are missing:
 
 ```jsonc
 {
@@ -67,59 +96,123 @@ Vite's template ships a reasonable `tsconfig.json`, but confirm these compiler o
 }
 ```
 
+Never weaken these later to silence an error; fix the code instead.
+
 Verify:
 
 ```sh
 bunx tsc --noEmit -p tsconfig.app.json
 ```
 
-## 4. Set up formatting and linting
-
-Install:
+## 4. Set up Biome for linting and formatting
 
 ```sh
-bun add -d prettier eslint typescript-eslint eslint-plugin-react-hooks
+bun add -d @biomejs/biome
+bunx biome init
 ```
 
-Create `.prettierrc.json`:
+`biome init` writes `biome.json` with a schema line matching the installed version — keep that line, then replace the rest with the config below. This ruleset is deliberately strict: it enforces complexity limits, bans `any` and non-null assertions, requires exhaustive React hook dependencies, and checks accessibility. Do not turn rules off to make existing code pass; fix the code. Requires Biome 2.x.
 
-```json
+```jsonc
 {
-  "semi": true,
-  "singleQuote": true,
-  "trailingComma": "all",
-  "printWidth": 100
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": { "ignoreUnknown": true },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "semicolons": "always",
+      "trailingCommas": "all",
+      "arrowParentheses": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "domains": { "react": "recommended" },
+    "rules": {
+      "recommended": true,
+      "complexity": {
+        "noExcessiveCognitiveComplexity": {
+          "level": "error",
+          "options": { "maxAllowedComplexity": 12 }
+        },
+        "noExcessiveLinesPerFunction": {
+          "level": "error",
+          "options": { "maxLines": 70, "skipBlankLines": true }
+        },
+        "noForEach": "error",
+        "noUselessFragments": "error"
+      },
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "error",
+        "noNestedComponentDefinitions": "error",
+        "useExhaustiveDependencies": "error",
+        "useHookAtTopLevel": "error",
+        "useJsxKeyInIterable": "error"
+      },
+      "nursery": {
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error"
+      },
+      "performance": { "noNamespaceImport": "error" },
+      "style": {
+        "noNonNullAssertion": "error",
+        "noParameterAssign": "error",
+        "noUselessElse": "error",
+        "useImportType": "error",
+        "noExcessiveLinesPerFile": {
+          "level": "warn",
+          "options": { "maxLines": 500, "skipBlankLines": true }
+        }
+      },
+      "suspicious": {
+        "noExplicitAny": "error",
+        "noImplicitAnyLet": "error",
+        "noArrayIndexKey": "error",
+        "noConsole": {
+          "level": "error",
+          "options": { "allow": ["warn", "error"] }
+        }
+      },
+      "a11y": {
+        "useButtonType": "error",
+        "noLabelWithoutControl": "error",
+        "useKeyWithClickEvents": "error",
+        "useSemanticElements": "error"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+      "linter": {
+        "rules": {
+          "style": { "noExcessiveLinesPerFile": "off" },
+          "suspicious": { "noConsole": "off", "noExplicitAny": "off" }
+        }
+      }
+    }
+  ]
 }
 ```
 
-Create `.prettierignore`:
+If a nursery rule name is rejected by the installed Biome version, check `bunx biome rage` for the version and consult the Biome docs for the rule's current group — move the rule, do not drop it.
 
-```
-dist/
-coverage/
-bun.lock
-```
-
-The Vite template ships an `eslint.config.js` using the flat config format; keep it. If starting from scratch, a minimal flat config:
-
-```js
-// eslint.config.js
-import tseslint from 'typescript-eslint';
-
-export default tseslint.config(
-  { ignores: ['dist/', 'coverage/'] },
-  tseslint.configs.recommended,
-);
-```
-
-Verify:
+Format the scaffolded files once, then verify:
 
 ```sh
-bunx prettier --check .
-bunx eslint .
+bunx biome check --write .
+bunx biome check .
 ```
 
-Fix any issues with `bunx prettier --write .` before committing.
+`biome check` covers both linting and formatting — it must exit 0. The template's scaffolded code may violate the strict rules (e.g. `App.tsx` complexity); refactor it until the check passes.
 
 ## 5. Set up testing
 
@@ -127,7 +220,7 @@ Fix any issues with `bunx prettier --write .` before committing.
 bun add -d vitest @testing-library/react @testing-library/jest-dom jsdom
 ```
 
-Create `vitest.config.ts`:
+Write `vitest.config.ts`:
 
 ```ts
 import { defineConfig } from 'vitest/config';
@@ -140,7 +233,7 @@ export default defineConfig({
 });
 ```
 
-Write one real test to prove the harness works, e.g. `src/App.test.tsx`:
+Write one real test that renders the actual app, `src/App.test.tsx`:
 
 ```tsx
 import { render, screen } from '@testing-library/react';
@@ -153,6 +246,8 @@ test('renders the app', () => {
 });
 ```
 
+If `App` has no heading, adapt the assertion to something the real component renders. Do not write a placeholder test like `expect(true).toBe(true)`.
+
 Verify:
 
 ```sh
@@ -161,7 +256,7 @@ bunx vitest run
 
 ## 6. Wire up package scripts
 
-Ensure `package.json` has a single canonical entry point for every check. Agents and CI should always go through these, never ad-hoc commands:
+Edit `package.json` so these scripts exist exactly. From this point on, run all checks through these scripts — never ad-hoc variants — so local runs, the pre-commit hook, CI, and future agents all execute the same gate:
 
 ```json
 {
@@ -170,27 +265,47 @@ Ensure `package.json` has a single canonical entry point for every check. Agents
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p tsconfig.app.json",
-    "lint": "eslint .",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
+    "lint": "biome check .",
+    "format": "biome check --write .",
     "test": "vitest run",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test"
+    "check": "bun run typecheck && bun run lint && bun run test"
   }
 }
 ```
 
-Verify the whole gate:
+Verify:
 
 ```sh
 bun run check
 bun run build
 ```
 
-Both must pass with zero errors.
+Both must exit 0.
 
-## 7. Structure the source tree
+## 7. Set up Husky pre-commit hooks
 
-Organize `src/` by capability, not by file type. A basic starting shape:
+```sh
+bun add -d husky
+bunx husky init
+```
+
+`husky init` adds a `"prepare": "husky"` script and creates `.husky/pre-commit` with a placeholder. Overwrite the hook to run the canonical gate:
+
+```sh
+echo "bun run check" > .husky/pre-commit
+```
+
+Verify the hook actually fires by attempting a commit later in step 10 — a passing `bun run check` must appear in the commit output. If you need to confirm earlier, run the hook directly:
+
+```sh
+sh .husky/pre-commit
+```
+
+Never use `--no-verify` to bypass a failing hook; fix the failure.
+
+## 8. Structure the source tree
+
+Reorganize `src/` toward this shape (create the directories now even if some start empty of features):
 
 ```
 src/
@@ -201,30 +316,40 @@ src/
   main.tsx      # Entry point
 ```
 
-Rules to establish now, while the repo is small:
+Enforce these rules in all code you write here:
 
-- Keep tests next to the code they test (`foo.ts` / `foo.test.ts`).
-- Keep `lib/` free of React and browser globals so it stays trivially testable.
-- Avoid barrel files (`index.ts` re-exports) until there is a demonstrated need.
+- Place tests next to the code they test (`foo.ts` / `foo.test.ts`).
+- Keep `lib/` free of React and browser globals.
+- Do not create barrel files (`index.ts` re-exports).
 
-## 8. Add agent instructions
+Verify `bun run check` still passes after any moves.
 
-Create `AGENTS.md` at the repo root so future agents know how to work here:
+## 9. Write agent instructions
+
+Write `AGENTS.md` at the repo root. This is the contract future agents (including you) operate under:
 
 ```markdown
 # AGENTS.md
 
 ## Commands
 
-- `bun run check` — typecheck, lint, format check, and tests. Run before every commit.
+- `bun run check` — typecheck, lint, format check, and tests. Also runs as the pre-commit hook.
 - `bun run dev` — dev server on http://localhost:5173
 - `bun run build` — production build
+- `bun run format` — fix lint and formatting with Biome
+
+## Working with the user
+
+The repo owner is nontechnical. Report in plain language, decide technical
+questions yourself, and only ask about outcomes they can judge.
 
 ## Conventions
 
 - Strict TypeScript; do not weaken compiler options or use `any` to silence errors.
+- Biome is the only linter and formatter; do not add ESLint or Prettier. Do not
+  weaken the rules in `biome.json` to make code pass.
 - Tests live next to source files. New logic in `src/lib` or `src/features` needs tests.
-- Format with Prettier via `bun run format`; do not hand-format.
+- Never commit with `--no-verify`.
 
 ## Structure
 
@@ -232,11 +357,11 @@ Create `AGENTS.md` at the repo root so future agents know how to work here:
 - `src/lib/` — pure utilities, no React or browser imports
 ```
 
-Also create a short `README.md` covering what the app is, how to install (`bun install`), and how to run it (`bun run dev`).
+Also write a short `README.md`: what the app is, `bun install`, `bun run dev`. Keep both files accurate to what actually exists in the repo — do not document aspirations.
 
-## 9. Add CI
+## 10. Add CI
 
-Create `.github/workflows/ci.yml`:
+Write `.github/workflows/ci.yml`:
 
 ```yaml
 name: CI
@@ -257,30 +382,39 @@ jobs:
       - run: bun run build
 ```
 
-CI runs the exact same `check` script as local development — one gate, defined once.
+CI must run the same `check` script as the pre-commit hook and local development. Do not add CI-only check commands.
 
-## 10. First commit
+## 11. Commit and push
 
 ```sh
 git add -A
-git status        # review: no secrets, no node_modules, no dist
-git commit -m "Scaffold TypeScript web app with Vite, ESLint, Prettier, Vitest, and CI"
+git status
 ```
 
-If pushing to GitHub:
+Inspect the status output before committing. Abort and fix if you see `node_modules/`, `dist/`, any `.env` file, or anything resembling a credential. Then:
+
+```sh
+git commit -m "Scaffold TypeScript web app with Vite, Biome, Vitest, Husky, and CI"
+```
+
+The pre-commit hook must run and pass during this commit — confirm its output appears. Only create and push a remote if the task asked for one:
 
 ```sh
 gh repo create <name> --private --source . --push
 ```
 
-## Final verification checklist
+## Completion criteria
 
-Before declaring the repo ready, confirm all of the following:
+Report the repo as ready only when every item below is true. State each result explicitly in your final report — do not summarize as "everything passed" without having run the commands in this session:
 
-- [ ] `bun run check` passes (typecheck, lint, format, tests)
-- [ ] `bun run build` succeeds
-- [ ] `bun run dev` serves the app
+- [ ] `bun run check` exits 0 (typecheck, Biome lint + format, tests)
+- [ ] `bun run build` exits 0
+- [ ] The curl verification against the dev server printed `OK`
+- [ ] The Husky pre-commit hook ran `bun run check` during the initial commit
 - [ ] `.gitignore` excludes `node_modules/`, `dist/`, and `.env`
-- [ ] `AGENTS.md` and `README.md` exist and match reality
-- [ ] CI workflow runs the same `check` script used locally
-- [ ] The initial commit contains no secrets or generated artifacts
+- [ ] ESLint and Prettier are fully removed; Biome is the only lint/format tool
+- [ ] `AGENTS.md` and `README.md` exist and describe the repo as it actually is
+- [ ] CI runs the same `check` script used locally
+- [ ] The initial commit contains no secrets and no generated artifacts
+
+If any item fails and you cannot fix it, report exactly which step failed and the full error output — do not report partial success as success.
